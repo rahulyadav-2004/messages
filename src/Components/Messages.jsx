@@ -38,6 +38,7 @@ function Messages() {
   const { currentUser } = useAuth();
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const messageInputRef = useRef(null);
    // Memoized user list with unread counts and sorted by activity
   const filteredUsers = useMemo(() => {
     const otherUsers = users.filter(user => user.id !== currentUser?.uid).map(user => {
@@ -54,37 +55,32 @@ function Messages() {
       };
     });
     
-    // Sort users: Keep selected chat stable during active conversation
+    // Sort users: New messages move chats to top, but clicking doesn't affect position
     return otherUsers.sort((a, b) => {
-      // If we're actively chatting, keep the selected chat at the top to prevent jumping
       const isASelected = a.id === selectedChat;
       const isBSelected = b.id === selectedChat;
       
-      if (isActivelyChatting) {
-        // During active chatting, strongly prioritize the selected chat
+      // During active chatting, prevent the selected chat from jumping around
+      if (isActivelyChatting && (isASelected || isBSelected)) {
         if (isASelected && !isBSelected) return -1;
         if (isBSelected && !isASelected) return 1;
-      } else {
-        // Normal behavior: only slightly prioritize selected chat
-        if (isASelected && !isBSelected && a.lastMessageTime) return -1;
-        if (isBSelected && !isASelected && b.lastMessageTime) return 1;
       }
       
-      // First priority: unread messages (only for non-selected chats)
-      if (!isASelected && !isBSelected) {
-        if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
-        if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
-      }
+      // First priority: unread messages - these should move to top for visibility
+      if (a.unreadCount > 0 && b.unreadCount === 0) return -1;
+      if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
       
-      // Second priority: recent messages
-      if (a.lastMessageTime && b.lastMessageTime) {
-        const aTime = a.lastMessageTime.toDate ? a.lastMessageTime.toDate() : new Date(a.lastMessageTime);
-        const bTime = b.lastMessageTime.toDate ? b.lastMessageTime.toDate() : new Date(b.lastMessageTime);
-        if (aTime > bTime) return -1;
-        if (aTime < bTime) return 1;
+      // Second priority: recent messages (but only if no unread counts to consider)
+      if (a.unreadCount === 0 && b.unreadCount === 0) {
+        if (a.lastMessageTime && b.lastMessageTime) {
+          const aTime = a.lastMessageTime.toDate ? a.lastMessageTime.toDate() : new Date(a.lastMessageTime);
+          const bTime = b.lastMessageTime.toDate ? b.lastMessageTime.toDate() : new Date(b.lastMessageTime);
+          if (aTime > bTime) return -1;
+          if (aTime < bTime) return 1;
+        }
+        if (a.lastMessageTime && !b.lastMessageTime) return -1;
+        if (!a.lastMessageTime && b.lastMessageTime) return 1;
       }
-      if (a.lastMessageTime && !b.lastMessageTime) return -1;
-      if (!a.lastMessageTime && b.lastMessageTime) return 1;
       
       // Third priority: online status
       if (a.isOnline && !b.isOnline) return -1;
@@ -244,22 +240,36 @@ function Messages() {
     };
   }, [showUserMenu]);
 
-  // Handle chat selection and mark as read
+  // Auto-focus input when chat is selected
+  useEffect(() => {
+    if (selectedChat && messageInputRef.current) {
+      // Small delay to ensure the input is rendered
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  }, [selectedChat]);
+
+  // Handle chat selection and mark as read (don't affect sorting)
   const handleChatSelect = useCallback(async (userId) => {
     setSelectedChat(userId);
     
     // Mark chat as read when selected
     const chatId = createChatId(currentUser?.uid || '', userId);
     await markChatAsRead(chatId, currentUser?.uid || '');
+    
+    // Don't set isActivelyChatting here - only for sending messages
   }, [currentUser?.uid]);
   
-  // Handle quick contact selection and mark as read
+  // Handle quick contact selection and mark as read (don't affect sorting)
   const handleQuickContactSelect = useCallback(async (userId) => {
     setSelectedChat(userId);
     
     // Mark chat as read when selected
     const chatId = createChatId(currentUser?.uid || '', userId);
     await markChatAsRead(chatId, currentUser?.uid || '');
+    
+    // Don't set isActivelyChatting here - only for sending messages
   }, [currentUser?.uid]);
 
   // Handle sending message with debouncing
@@ -771,6 +781,7 @@ function Messages() {
                       </button>
                       <div className="flex-1 mx-2">
                         <input 
+                          ref={messageInputRef}
                           type="text" 
                           value={newMessage}
                           onChange={(e) => setNewMessage(e.target.value)}
