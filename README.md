@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # React Chat Application with Firebase
 
 A modern, real-time chat application built with React and Firebase, featuring user authentication, real-time messaging, file sharing, presence indicators, and unread message tracking.
